@@ -1,0 +1,96 @@
+local Debug = false -- Set this to true if you want my debug output.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local Player = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 9e9)
+local Balls = workspace:WaitForChild("Balls", 9e9)
+
+-- Functions
+
+local function print(...) -- Debug print.
+    if Debug then
+        warn(...)
+    end
+end
+
+local function VerifyBall(Ball) -- Returns nil if the ball isn't a valid projectile; true if it's the right ball.
+    if typeof(Ball) == "Instance" and Ball:IsA("BasePart") and Ball:IsDescendantOf(Balls) and Ball:GetAttribute("realBall") == true then
+        return true
+    end
+end
+
+local function IsTarget() -- Returns true if we are the current target.
+    return (Player.Character and Player.Character:FindFirstChild("Highlight"))
+end
+
+local function Parry() -- Parries.
+    Remotes:WaitForChild("ParryButtonPress"):Fire()
+end
+
+-- Create a function to create the range circle
+local function createRangeCircle(parent, radius, transparency, color)
+    local circle = Instance.new("Part")
+    circle.Parent = parent
+    circle.Size = Vector3.new(radius * 2, 0.2, radius * 2)
+    circle.Transparency = transparency
+    circle.CanCollide = false
+    circle.Anchored = true
+    circle.Material = Enum.Material.Neon
+    circle.TopSurface, circle.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+
+    local mesh = Instance.new("CylinderMesh")
+    mesh.Parent = circle
+    mesh.Scale = Vector3.new(1, radius / (radius * 2), 1)
+
+    local color3 = Color3.fromRGB(color.R, color.G, color.B)
+    circle.Color = color3
+
+    return circle
+end
+
+-- Create the range circle for the player
+local rangeCircle = createRangeCircle(workspace.CurrentCamera, 18, 0.5, Color3.fromRGB(0, 255, 0))
+
+-- Update the range circle's position to match the player's position
+game:GetService("RunService").RenderStepped:Connect(function()
+    if rangeCircle and Player.Character then
+        rangeCircle.CFrame = CFrame.new(Player.Character.HumanoidRootPart.Position, Player.Character.HumanoidRootPart.Position + Vector3.new(0, 0, 0))
+    end
+end)
+
+-- The actual code
+
+Balls.ChildAdded:Connect(function(Ball)
+    if not VerifyBall(Ball) then
+        return
+    end
+
+    print("Ball Spawned: " .. Ball.Name)
+
+    local OldPosition = Ball.Position
+    local OldTick = tick()
+
+    Ball:GetPropertyChangedSignal("Position"):Connect(function()
+        if IsTarget() then
+            local Distance = (Ball.Position - workspace.CurrentCamera.Focus.Position).Magnitude
+            local Velocity = (OldPosition - Ball.Position).Magnitude
+
+            print("Distance: " .. Distance .. "\nVelocity: " .. Velocity .. "\nTime: " .. Distance / Velocity)
+
+            if Distance <= 18 then -- Check if the ball is within 18 studs
+                for i = 1, math.floor(Distance) do -- Spam parry based on the distance
+                    Parry()
+                    task.wait(0.1) -- Add a small delay to prevent excessive spamming
+                end
+            elseif (Distance / Velocity) <= 9.4 then
+                Parry()
+            end
+        end
+
+        if (tick() - OldTick >= 1/60) then
+            OldTick = tick()
+            OldPosition = Ball.Position
+        end
+    end)
+end)
